@@ -8,83 +8,13 @@ import itsSet from 'its-set';
 import clj_fuzzy from 'clj-fuzzy';
 import ohm from 'ohm-js';
 
-const UNIT = {
-  zero: 0,
-  first: 1,
-  one: 1,
-  second: 2,
-  two: 2,
-  third: 3,
-  thirteenth: 13,
-  thirteen: 13,
-  three: 3,
-  fourth: 4,
-  fourteenth: 14,
-  fourteen: 14,
-  four: 4,
-  fifteenth: 15,
-  fifteen: 15,
-  fifth: 5,
-  five: 5,
-  sixth: 6,
-  sixteenth: 16,
-  sixteen: 16,
-  six: 6,
-  seventeenth: 17,
-  seventeen: 17,
-  seventh: 7,
-  seven: 7,
-  eighteenth: 18,
-  eighteen: 18,
-  eighth: 8,
-  eight: 8,
-  nineteenth: 19,
-  nineteen: 19,
-  ninth: 9,
-  nine: 9,
-  tenth: 10,
-  ten: 10,
-  eleventh: 11,
-  eleven: 11,
-  twelfth: 12,
-  twelve: 12,
-  a: 1,
-};
+import converter from './converters';
 
-const TEN = {
-  twenty: 20,
-  twentieth: 20,
-  thirty: 30,
-  thirtieth: 30,
-  forty: 40,
-  fortieth: 40,
-  fifty: 50,
-  fiftieth: 50,
-  sixty: 60,
-  sixtieth: 60,
-  seventy: 70,
-  seventieth: 70,
-  eighty: 80,
-  eightieth: 80,
-  ninety: 90,
-  ninetieth: 90,
-};
+const UNIT = converter.UNIT;
 
-const MAGNITUDE = {
-  hundred: 100,
-  hundredth: 100,
-  thousand: 1000,
-  million: 1000000,
-  billion: 1000000000,
-  trillion: 1000000000000,
-  quadrillion: 1000000000000000,
-  quintillion: 1000000000000000000,
-  sextillion: 1000000000000000000000,
-  septillion: 1000000000000000000000000,
-  octillion: 1000000000000000000000000000,
-  nonillion: 1000000000000000000000000000000,
-  decillion: 1000000000000000000000000000000000,
-};
+const TEN = converter.TEN;
+
+const MAGNITUDE = converter.MAGNITUDE;
 
 // all words found in number phrases
 const NUMBER_WORDS = ['and', 'point', 'dot']
@@ -152,8 +82,15 @@ const isUnit = word => Object.keys(UNIT).indexOf(word) !== -1;
 const isTen = word => Object.keys(TEN).indexOf(word) !== -1;
 const isMag = word => Object.keys(MAGNITUDE).indexOf(word) !== -1;
 
+const formatAccents = (str) => {
+  //Especially for french !
+  return str
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+};
+
 const findRegions = (text, fuzzy) => {
-  const words = text
+  const words = formatAccents(text)
     .split(/[ -]/g)
     .map(word => fuzzy ? fuzzyMatch(word) : word)
     .reduce((acc, word, i) => {
@@ -193,7 +130,9 @@ const findRegions = (text, fuzzy) => {
         !(isTen(word.text) && isUnit(prevWord.text)) ||
         (prevRegion.pointReached && isUnit(word.text)) ||
         word === 'and' ||
-        prevWord === 'and'
+        prevWord === 'and' ||
+        word === 'et' ||
+        prevWord === 'et'
       ) {
         const newRegions = regions.slice();
         newRegions[regions.length - 1].end = word.end;
@@ -205,10 +144,11 @@ const findRegions = (text, fuzzy) => {
 };
 
 const evaluateNumberRegion = text => {
-  const textIsOnlyHelperWord = ['a', 'and'].reduce((acc, word) => acc || text === word, false);
+  const textIsOnlyHelperWord = ['a', 'and', 'un', 'et'].reduce((acc, word) => acc || text === word, false);
   if (textIsOnlyHelperWord) return text;
   var m = grammar.match(text.replace(PUNCTUATION, ' ').replace(/\band\b/g, ''));
   if (m.succeeded()) {
+    console.log('###DEBUG ' + text);
     return semantics(m).eval();
   }
   else {
@@ -228,10 +168,12 @@ function splice (str, index, count, add) {
   return str.slice(0, i) + (add || '') + str.slice(i + count);
 }
 
+
 // replace all number words in a string with actual numerals.
 // If string contains multiple separate numbers then replace each one individually.
 // If option `fuzzy` = true then try coerce words into numbers before conversion to numbers.
 export function wordsToNumbers (text, options) {
+
   const opts = Object.assign({fuzzy: false}, options);
   const regions = findRegions(text, opts.fuzzy);
   if (!regions.length) return text;
